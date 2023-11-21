@@ -21,7 +21,7 @@ type SEOData struct {
 }
 
 type Parser interface {
-	getSEOData(resp *http.Response) (SEOData, error)
+	GetSEOData(resp *http.Response) (SEOData, error)
 }
 
 type DefaultParser struct {
@@ -68,27 +68,26 @@ func extractSitemapURLs(startURL string) []string {
 	n++
 	go func() { worklist <- []string{startURL} }()
 
-	for ; n > 0 ; n-- {
-
-	list := <-worklist
-	for _, link := range list{
-		n++
-		go func(link string) {
-			response, err := makeRequest(link)
-			if err != nil {
-				log.Printf("Error retrieving URL:%s", link)
-			}
-			urls, _ := extractURLs(response)
-			if err != nil {
-				log.Printf("Error extracting document from response, URL:%s", link)
-			}
-			sitemapFiles, pages := isSitemap(urls)
-			if sitemapFiles != nil {
-				worklist <- sitemapFiles
-			}
+	for ; n > 0; n-- {
+		list := <-worklist
+		for _, link := range list{
+			n++
+			go func(link string) {
+				response, err := makeRequest(link)
+				if err != nil {
+					log.Printf("Error retrieving URL: %s", link)
+				}
+				urls, _ := extractURLs(response)
+				if err != nil {
+					log.Printf("Error extracting document from response, URL: %s", link)
+				}
+				sitemapFiles, pages := isSitemap(urls)
+				if sitemapFiles != nil {
+					worklist <- sitemapFiles
+				}
 				toCrawl = append(toCrawl, pages...)
-		}(link)
-	}
+			}(link)
+		}
 }
 	return toCrawl
 }
@@ -103,7 +102,6 @@ func makeRequest(url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -118,17 +116,18 @@ func scrapeURLs(urls []string, parser Parser, concurrency int) []SEOData{
 	worklist := make(chan []string)
 	results := []SEOData{}
 
-	go func (){worklist <- urls}()
+	go func() {worklist <- urls}()
+
 	for ; n > 0 ; n-- {
 		list := <-worklist
 		for _, url := range list {
 			if url != "" {
 				n++
 				go func(url string, token chan struct{}) {
-					log.Printf("Requesting URL:%s", url)
+					log.Printf("Requesting URL: %s", url)
 					res, err := scrapePage(url, tokens, parser)
 					if err != nil {
-						log.Printf("Encountered error, URL:%s", url)
+						log.Printf("Encountered error, URL: %s", url)
 					} else {
 						results = append(results, res)
 					}
@@ -160,7 +159,7 @@ func scrapePage(url string, token chan struct{}, parser Parser) (SEOData, error)
 	if err != nil {
 		return SEOData{}, err
 	}
-	data, err := parser.getSEOData(res)
+	data, err := parser.GetSEOData(res)
 	if err != nil {
 		return SEOData{}, err
 	}
@@ -170,13 +169,14 @@ func scrapePage(url string, token chan struct{}, parser Parser) (SEOData, error)
 func crawlPage(url string, tokens chan struct{})(*http.Response, error) {
 	tokens <- struct{}{}
 	resp, err := makeRequest(url)
+	<-tokens
 	if err != nil {
 		return nil, err
 	}
 	return resp, err
 }
 
-func (d DefaultParser) getSEOData(resp *http.Response)(SEOData, error) {
+func (d DefaultParser) GetSEOData(resp *http.Response)(SEOData, error) {
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return SEOData{}, err
